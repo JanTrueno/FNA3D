@@ -12,7 +12,7 @@ option(MOJOSHADER_STATIC_SPIRVCROSS "Build against statically linked spirvcross"
 # Version
 SET(LIB_MAJOR_VERSION "0")
 SET(LIB_MINOR_VERSION "26")
-SET(LIB_REVISION "02")
+SET(LIB_REVISION "09")
 SET(LIB_VERSION "${LIB_MAJOR_VERSION}.${LIB_MINOR_VERSION}.${LIB_REVISION}")
 
 # Build Type
@@ -51,7 +51,8 @@ endif()
 add_definitions(
 	-DFNA3D_DRIVER_OPENGL
 )
-if(BUILD_SDL3)
+# SDL_GPU does not have a WASM backend, so don't enable it
+if(BUILD_SDL3 AND NOT EMSCRIPTEN)
 	add_definitions(-DFNA3D_DRIVER_SDL)
 endif()
 add_definitions(
@@ -89,7 +90,6 @@ endif()
 if(EMSCRIPTEN)
 	add_definitions(
 		-DSUPPORT_PROFILE_GLSPIRV=0
-		-DSUPPORT_PROFILE_SPIRV=0
 	)
 endif()
 
@@ -137,7 +137,14 @@ if(TRACING_SUPPORT)
 	target_include_directories(fna3d_replay PUBLIC
 		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/MojoShader>
 	)
-	if(BUILD_SDL3)
+	if(EMSCRIPTEN)
+		set_target_properties(fna3d_replay PROPERTIES SUFFIX ".html")
+		target_link_options(fna3d_replay PRIVATE "-sEXIT_RUNTIME=1")
+		target_link_options(fna3d_replay PRIVATE "-sFULL_ES3")
+		target_link_options(fna3d_replay PRIVATE "-sASSERTIONS") # helpful for debugging!
+		target_link_options(fna3d_replay PRIVATE "-sSTACK_SIZE=1048576") # 1MiB
+		target_link_options(fna3d_replay PRIVATE "SHELL:--embed-file FNA3D_Trace.bin")
+	elseif(BUILD_SDL3)
 		add_executable(fna3d_dumpspirv dumpspirv/dumpspirv.c)
 		target_link_libraries(fna3d_dumpspirv FNA3D)
 		target_include_directories(fna3d_dumpspirv PUBLIC
