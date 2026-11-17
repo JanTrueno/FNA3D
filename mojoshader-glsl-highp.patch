@@ -1,0 +1,16 @@
+diff --git a/profiles/mojoshader_profile_glsl.c b/profiles/mojoshader_profile_glsl.c
+index 319e3cb..33a0cec 100644
+--- a/profiles/mojoshader_profile_glsl.c
++++ b/profiles/mojoshader_profile_glsl.c
+@@ -552,10 +552,7 @@ void emit_GLSL_start(Context *ctx, const char *profilestr)
+         output_line(ctx, "#define texture2DRect texture");
+         output_line(ctx, "#define texture2DRectProj textureProj");
+         output_line(ctx, "#define texture2DRectLod textureLod");
+-        if (shader_is_vertex(ctx))
+-            output_line(ctx, "precision highp float;");
+-        else
+-            output_line(ctx, "precision mediump float;");
++        output_line(ctx, "precision highp float;");
+         output_line(ctx, "precision mediump int;");
+         pop_output(ctx);
+     } // else if

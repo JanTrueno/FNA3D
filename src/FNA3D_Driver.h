@@ -127,6 +127,14 @@ static inline int32_t Texture_GetBlockSize(
 	case FNA3D_SURFACEFORMAT_USHORT_EXT:
 	case FNA3D_SURFACEFORMAT_BYTE_EXT:
 		return 1;
+	case FNA3D_SURFACEFORMAT_ASTC4X4_EXT:
+		return 4;
+	case FNA3D_SURFACEFORMAT_ASTC5X5_EXT:
+		return 5;
+	case FNA3D_SURFACEFORMAT_ASTC6X6_EXT:
+		return 6;
+	case FNA3D_SURFACEFORMAT_ASTC8X8_EXT:
+		return 8;
 	default:
 		FNA3D_LogError(
 			"Unrecognized SurfaceFormat!"
@@ -173,6 +181,11 @@ static inline int32_t Texture_GetFormatSize(
 		case FNA3D_SURFACEFORMAT_HDRBLENDABLE:
 			return 8;
 		case FNA3D_SURFACEFORMAT_VECTOR4:
+			return 16;
+		case FNA3D_SURFACEFORMAT_ASTC4X4_EXT:
+		case FNA3D_SURFACEFORMAT_ASTC5X5_EXT:
+		case FNA3D_SURFACEFORMAT_ASTC6X6_EXT:
+		case FNA3D_SURFACEFORMAT_ASTC8X8_EXT:
 			return 16;
 		default:
 			FNA3D_LogError(

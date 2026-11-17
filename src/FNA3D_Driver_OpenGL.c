@@ -327,6 +327,9 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	#include "FNA3D_Driver_OpenGL_glfuncs.h"
 } OpenGLRenderer;
 
+/* The GL calls on a thread of their own (FNA3D_OPENGL_THREAD=1) */
+#include "FNA3D_Driver_OpenGL_thread.h"
+
 /* XNA->OpenGL Translation Arrays */
 
 static int32_t XNAToGL_TextureFormat[] =
@@ -358,6 +361,10 @@ static int32_t XNAToGL_TextureFormat[] =
 	GL_COMPRESSED_TEXTURE_FORMATS,	/* SurfaceFormat.Bc7SrgbEXT */
 	GL_RED,				/* SurfaceFormat.NormalizedByteEXT */
 	GL_RED,				/* SurfaceFormat.NormalizedUShortEXT */
+	GL_COMPRESSED_TEXTURE_FORMATS,	/* SurfaceFormat.Astc4x4EXT */
+	GL_COMPRESSED_TEXTURE_FORMATS,	/* SurfaceFormat.Astc5x5EXT */
+	GL_COMPRESSED_TEXTURE_FORMATS,	/* SurfaceFormat.Astc6x6EXT */
+	GL_COMPRESSED_TEXTURE_FORMATS,	/* SurfaceFormat.Astc8x8EXT */
 };
 
 static int32_t XNAToGL_TextureInternalFormat[] =
@@ -389,6 +396,10 @@ static int32_t XNAToGL_TextureInternalFormat[] =
 	GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT,/* SurfaceFormat.BC7SrgbEXT */
 	GL_R8,				/* SurfaceFormat.NormalizedByteEXT */
 	GL_R16,				/* SurfaceFormat.NormalizedUShortEXT */
+	GL_COMPRESSED_RGBA_ASTC_4x4_KHR,	/* SurfaceFormat.Astc4x4EXT */
+	GL_COMPRESSED_RGBA_ASTC_5x5_KHR,	/* SurfaceFormat.Astc5x5EXT */
+	GL_COMPRESSED_RGBA_ASTC_6x6_KHR,	/* SurfaceFormat.Astc6x6EXT */
+	GL_COMPRESSED_RGBA_ASTC_8x8_KHR,	/* SurfaceFormat.Astc8x8EXT */
 };
 
 static int32_t XNAToGL_TextureDataType[] =
@@ -420,6 +431,10 @@ static int32_t XNAToGL_TextureDataType[] =
 	GL_ZERO,			/* NOPE */
 	GL_UNSIGNED_BYTE,		/* SurfaceFormat.NormalizedByteEXT */
 	GL_UNSIGNED_SHORT,		/* SurfaceFormat.NormalizedUShortEXT */
+	GL_ZERO,			/* NOPE (Astc4x4EXT) */
+	GL_ZERO,			/* NOPE (Astc5x5EXT) */
+	GL_ZERO,			/* NOPE (Astc6x6EXT) */
+	GL_ZERO,			/* NOPE (Astc8x8EXT) */
 };
 
 static int32_t XNAToGL_BlendMode[] =
@@ -1217,6 +1232,8 @@ static void OPENGL_DestroyDevice(FNA3D_Device *device)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) device->driverData;
 
+	GLThread_Stop();
+
 	if (renderer->useCoreProfile)
 	{
 		renderer->glBindVertexArray(0);
@@ -1447,14 +1464,14 @@ static void OPENGL_SwapBuffers(
 			renderer->glEnable(GL_SCISSOR_TEST);
 		}
 
-		SDL_GL_SwapWindow((SDL_Window*) overrideWindowHandle);
+		GLThread_SwapWindow((SDL_Window*) overrideWindowHandle);
 
 		BindFramebuffer(renderer, renderer->backbuffer->opengl.handle);
 	}
 	else
 	{
 		/* Nothing left to do, just swap! */
-		SDL_GL_SwapWindow((SDL_Window*) overrideWindowHandle);
+		GLThread_SwapWindow((SDL_Window*) overrideWindowHandle);
 	}
 
 	/* Run any threaded commands */
@@ -3316,14 +3333,14 @@ static void OPENGL_INTERNAL_SetPresentationInterval(
 		);
 		if (!enableLateSwapTear)
 		{
-			SDL_GL_SetSwapInterval(1);
+			GLThread_SetSwapInterval(1);
 		}
 		else
 		{
 #ifdef USE_SDL3
-			if (SDL_GL_SetSwapInterval(-1))
+			if (GLThread_SetSwapInterval(-1))
 #else
-			if (SDL_GL_SetSwapInterval(-1) != -1)
+			if (GLThread_SetSwapInterval(-1) != -1)
 #endif
 			{
 				FNA3D_LogInfo(
@@ -3337,17 +3354,17 @@ static void OPENGL_INTERNAL_SetPresentationInterval(
 					" Fall back to standard VSync."
 				);
 				SDL_ClearError();
-				SDL_GL_SetSwapInterval(1);
+				GLThread_SetSwapInterval(1);
 			}
 		}
 	}
 	else if (presentInterval == FNA3D_PRESENTINTERVAL_IMMEDIATE)
 	{
-		SDL_GL_SetSwapInterval(0);
+		GLThread_SetSwapInterval(0);
 	}
 	else if (presentInterval == FNA3D_PRESENTINTERVAL_TWO)
 	{
-		SDL_GL_SetSwapInterval(2);
+		GLThread_SetSwapInterval(2);
 	}
 	else
 	{
@@ -5739,7 +5756,7 @@ static void* MOJOSHADERCALL GLGetProcAddress(const char *ep, void* d)
 {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
-	return SDL_GL_GetProcAddress(ep);
+	return GLThread_Proxy(ep, (void*) SDL_GL_GetProcAddress(ep));
 #pragma GCC diagnostic pop
 }
 
@@ -5914,6 +5931,9 @@ FNA3D_Device* OPENGL_CreateDevice(
 #ifdef SDL_VIDEO_DRIVER_UIKIT
 	SDL_SysWMinfo wmInfo;
 #endif /* SDL_VIDEO_DRIVER_UIKIT */
+
+	/* The GL thread, if wanted, wraps MojoShader's entry points from the start */
+	GLThread_Init();
 
 	/* Create the FNA3D_Device */
 	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
@@ -6256,6 +6276,13 @@ FNA3D_Device* OPENGL_CreateDevice(
 	renderer->disposeIndexBuffersLock = SDL_CreateMutex();
 	renderer->disposeEffectsLock = SDL_CreateMutex();
 	renderer->disposeQueriesLock = SDL_CreateMutex();
+
+	/* From here the GL calls may run on their own thread */
+	GLThread_Start(
+		renderer,
+		(SDL_Window*) presentationParameters->deviceWindowHandle,
+		debugMode
+	);
 
 	/* Return the FNA3D_Device */
 	return result;
